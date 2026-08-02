@@ -21,6 +21,13 @@ MOCK_SECURITY_GROUPS = [
                 "FromPort": 443,
                 "ToPort": 443,
                 "IpRanges": [{"CidrIp": "0.0.0.0/0"}]
+            },
+            # 🚨 DRIFT RULE 1: Unrestricted SSH Access
+            {
+                "IpProtocol": "tcp",
+                "FromPort": 22,
+                "ToPort": 22,
+                "IpRanges": [{"CidrIp": "0.0.0.0/0"}]
             }
         ]
     },
@@ -34,6 +41,13 @@ MOCK_SECURITY_GROUPS = [
                 "FromPort": 5432,
                 "ToPort": 5432,
                 "IpRanges": [{"CidrIp": "10.0.0.0/16"}]
+            },
+            # 🚨 DRIFT RULE 2: Unrestricted RDP Access
+            {
+                "IpProtocol": "tcp",
+                "FromPort": 3389,
+                "ToPort": 3389,
+                "IpRanges": [{"CidrIp": "0.0.0.0/0"}]
             }
         ]
     }
