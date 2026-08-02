@@ -59,15 +59,16 @@ def log_drift(resource_id, event_type, details):
     timestamp = datetime.now(timezone.utc).isoformat()
     compliance = analyze_compliance_risk(event_type, details)
     
+    # Notice 'event_type' is now included as the 3rd parameter:
     cursor.execute('''
         INSERT INTO drift_logs (timestamp, resource_id, event_type, details, cis_control, iso_control)
         VALUES (?, ?, ?, ?, ?, ?)
-    ''', (timestamp, resource_id, json.dumps(details), compliance["cis"], compliance["iso"]))
+    ''', (timestamp, resource_id, event_type, json.dumps(details), compliance["cis"], compliance["iso"]))
     
     conn.commit()
     conn.close()
     print(f"🚨 [DRIFT DETECTED] Resource: {resource_id} | Event: {event_type}")
-
+    
 def detect_drift():
     """Compares baseline vs current configuration to spot additions, deletions, or updates."""
     previous, current = get_latest_two_snapshots()
