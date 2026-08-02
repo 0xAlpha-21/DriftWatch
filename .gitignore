@@ -1,0 +1,17 @@
+# Ignore Virtual Environments
+.venv/
+venv/
+
+# Ignore SQLite Databases & Snapshots
+*.db
+*.sqlite3
+driftwatch.db
+config_state.json
+
+# Ignore Python Cache Files
+__pycache__/
+*.py[cod]
+
+# Ignore IDE settings
+.vscode/
+.idea/
