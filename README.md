@@ -50,5 +50,5 @@ Commercial Cloud Security Posture Management (CSPM) solutions are often cost-pro
 
 ### 1. Clone the Repository
 ```bash
-git clone [https://github.com/your-username/driftwatch.git](https://github.com/your-username/driftwatch.git)
+git clone https://github.com/0xAlpha-21/driftwatch.git
 cd driftwatch
