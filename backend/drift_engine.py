@@ -1,21 +1,33 @@
 import json
 import sqlite3
 from datetime import datetime, timezone
-import db_manager
+import backend.db_manager as db_manager
 
-# Compliance Mapping Reference
+# Expanded Compliance Mapping Reference
 COMPLIANCE_MAP = {
     "OPEN_INBOUND_SSH": {
         "cis": "CIS 5.2 - Ensure no security groups allow ingress from 0.0.0.0/0 to port 22",
-        "iso": "ISO 27001:2022 A.8.20 - Network Security Control"
+        "iso": "ISO 27001:2022 A.8.20 - Network Security Control",
+        "gdpr": "GDPR Art. 32(1)(b) - Failure to ensure ongoing confidentiality",
+        "dpdpa": "DPDPA Sec 8(4) - Failure of reasonable security safeguards"
+    },
+    "OPEN_INBOUND_DB": {
+        "cis": "CIS 5.3 - Ensure strict least privilege configuration",
+        "iso": "ISO 27001:2022 A.8.9 - Configuration Management",
+        "gdpr": "GDPR Art. 32 - Unauthorized access risk to PII data stores",
+        "dpdpa": "DPDPA Sec 8(4) - High risk of personal data breach via direct DB access"
     },
     "OPEN_INBOUND_ALL": {
         "cis": "CIS 5.1 - Ensure no security groups allow ingress from 0.0.0.0/0 to all ports",
-        "iso": "ISO 27001:2022 A.8.21 - Security of Network Services"
+        "iso": "ISO 27001:2022 A.8.21 - Security of Network Services",
+        "gdpr": "GDPR Art. 25 - Failure of Data Protection by Design and by Default",
+        "dpdpa": "DPDPA Sec 8(4) - Complete failure of reasonable security safeguards"
     },
     "GENERIC_DRIFT": {
-        "cis": "CIS 5.3 - Ensure security groups are strictly configured to least privilege",
-        "iso": "ISO 27001:2022 A.8.9 - Configuration Management"
+        "cis": "CIS 5.3 - Review for least privilege",
+        "iso": "ISO 27001:2022 A.8.9 - Configuration Management",
+        "gdpr": "GDPR Art. 32 - Monitor configuration drift for processing security",
+        "dpdpa": "DPDPA Sec 8 - General safeguard review required"
     }
 }
 
@@ -36,38 +48,44 @@ def get_latest_two_snapshots(resource_type="AWS::EC2::SecurityGroup"):
     if len(rows) < 2:
         return None, None
     
-    # rows[0] is the current (latest), rows[1] is the previous baseline
     current_snapshot = json.loads(rows[0][2])
     previous_snapshot = json.loads(rows[1][2])
     
     return previous_snapshot, current_snapshot
 
 def analyze_compliance_risk(event_type, details):
-    """Maps drift findings to CIS Benchmarks and ISO 27001 controls."""
+    """Maps drift findings to CIS, ISO, GDPR, and DPDPA."""
     details_str = str(details).lower()
+    
     if "0.0.0.0/0" in details_str and ("22" in details_str or "ssh" in details_str):
         return COMPLIANCE_MAP["OPEN_INBOUND_SSH"]
+    # NEW: Catch database ports (RDP, PostgreSQL, MySQL) open to the internet
+    elif "0.0.0.0/0" in details_str and any(port in details_str for port in ["3389", "5432", "3306"]):
+        return COMPLIANCE_MAP["OPEN_INBOUND_DB"]
     elif "0.0.0.0/0" in details_str and "all" in details_str:
         return COMPLIANCE_MAP["OPEN_INBOUND_ALL"]
+    
     return COMPLIANCE_MAP["GENERIC_DRIFT"]
 
 def log_drift(resource_id, event_type, details):
-    """Inserts a detected drift event into the drift_logs table."""
+    """Inserts a detected drift event into the drift_logs table with new compliance mappings."""
     conn = sqlite3.connect(db_manager.DB_NAME)
     cursor = conn.cursor()
     
     timestamp = datetime.now(timezone.utc).isoformat()
     compliance = analyze_compliance_risk(event_type, details)
     
-    # Notice 'event_type' is now included as the 3rd parameter:
+    # Updated to bind 8 parameters
     cursor.execute('''
-        INSERT INTO drift_logs (timestamp, resource_id, event_type, details, cis_control, iso_control)
-        VALUES (?, ?, ?, ?, ?, ?)
-    ''', (timestamp, resource_id, event_type, json.dumps(details), compliance["cis"], compliance["iso"]))
+        INSERT INTO drift_logs (timestamp, resource_id, event_type, details, cis_control, iso_control, gdpr_control, dpdpa_control)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (timestamp, resource_id, event_type, json.dumps(details), compliance["cis"], compliance["iso"], compliance["gdpr"], compliance["dpdpa"]))
     
     conn.commit()
     conn.close()
     print(f"🚨 [DRIFT DETECTED] Resource: {resource_id} | Event: {event_type}")
+
+
     
 def detect_drift():
     """Compares baseline vs current configuration to spot additions, deletions, or updates."""

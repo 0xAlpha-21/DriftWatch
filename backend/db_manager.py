@@ -6,7 +6,7 @@ def init_db():
     """Initializes SQLite database tables for snapshots and drift logs."""
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
-    
+
     # Table 1: Raw configuration snapshots
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS snapshots (
@@ -16,7 +16,7 @@ def init_db():
             state_data TEXT NOT NULL
         )
     ''')
-    
+
     # Table 2: Historical drift events
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS drift_logs (
@@ -26,13 +26,14 @@ def init_db():
             event_type TEXT NOT NULL,
             details TEXT NOT NULL,
             cis_control TEXT,
-            iso_control TEXT
+            iso_control TEXT,
+            gdpr_control TEXT,
+            dpdpa_control TEXT
         )
     ''')
-    
+
     conn.commit()
     conn.close()
-    print("✅ Database initialized successfully: driftwatch.db")
 
 if __name__ == "__main__":
     init_db()

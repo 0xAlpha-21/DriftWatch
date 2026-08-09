@@ -1,9 +1,40 @@
 import json
 import sqlite3
 from datetime import datetime, timezone
-import db_manager
+import backend.db_manager as db_manager
 
 # Mock AWS Security Group configurations
+# # MOCK DATA 1: SECURE BASELINE
+# MOCK_SECURITY_GROUPS = [
+#     {
+#         "GroupId": "sg-0a1b2c3d4e5f67890",
+#         "GroupName": "web-server-sg",
+#         "Description": "Allow HTTP and HTTPS traffic",
+#         "IpPermissions": [
+#             {
+#                 "IpProtocol": "tcp", "FromPort": 80, "ToPort": 80,
+#                 "IpRanges": [{"CidrIp": "0.0.0.0/0"}]
+#             },
+#             {
+#                 "IpProtocol": "tcp", "FromPort": 443, "ToPort": 443,
+#                 "IpRanges": [{"CidrIp": "0.0.0.0/0"}]
+#             }
+#         ]
+#     },
+#     {
+#         "GroupId": "sg-0987654321fedcba0",
+#         "GroupName": "db-server-sg",
+#         "Description": "Database access restricted to VPC internal subnet",
+#         "IpPermissions": [
+#             {
+#                 "IpProtocol": "tcp", "FromPort": 5432, "ToPort": 5432,
+#                 "IpRanges": [{"CidrIp": "10.0.0.0/16"}]  # Secure: Internal VPC only
+#             }
+#         ]
+#     }
+# ]
+
+# MOCK DATA 2: INSECURE DRIFT
 MOCK_SECURITY_GROUPS = [
     {
         "GroupId": "sg-0a1b2c3d4e5f67890",
@@ -11,22 +42,16 @@ MOCK_SECURITY_GROUPS = [
         "Description": "Allow HTTP and HTTPS traffic",
         "IpPermissions": [
             {
-                "IpProtocol": "tcp",
-                "FromPort": 80,
-                "ToPort": 80,
+                "IpProtocol": "tcp", "FromPort": 80, "ToPort": 80,
                 "IpRanges": [{"CidrIp": "0.0.0.0/0"}]
             },
             {
-                "IpProtocol": "tcp",
-                "FromPort": 443,
-                "ToPort": 443,
+                "IpProtocol": "tcp", "FromPort": 443, "ToPort": 443,
                 "IpRanges": [{"CidrIp": "0.0.0.0/0"}]
             },
-            # 🚨 DRIFT RULE 1: Unrestricted SSH Access
+            # 🚨 DRIFT 1: SSH (22) exposed to the entire internet
             {
-                "IpProtocol": "tcp",
-                "FromPort": 22,
-                "ToPort": 22,
+                "IpProtocol": "tcp", "FromPort": 22, "ToPort": 22,
                 "IpRanges": [{"CidrIp": "0.0.0.0/0"}]
             }
         ]
@@ -37,16 +62,12 @@ MOCK_SECURITY_GROUPS = [
         "Description": "Database access restricted to VPC internal subnet",
         "IpPermissions": [
             {
-                "IpProtocol": "tcp",
-                "FromPort": 5432,
-                "ToPort": 5432,
+                "IpProtocol": "tcp", "FromPort": 5432, "ToPort": 5432,
                 "IpRanges": [{"CidrIp": "10.0.0.0/16"}]
             },
-            # 🚨 DRIFT RULE 2: Unrestricted RDP Access
+            # 🚨 DRIFT 2: MySQL Database (3306) exposed to the entire internet
             {
-                "IpProtocol": "tcp",
-                "FromPort": 3389,
-                "ToPort": 3389,
+                "IpProtocol": "tcp", "FromPort": 3306, "ToPort": 3306,
                 "IpRanges": [{"CidrIp": "0.0.0.0/0"}]
             }
         ]
