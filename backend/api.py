@@ -31,7 +31,15 @@ def get_metrics():
 @app.get("/api/incidents")
 def get_incidents():
     conn = sqlite3.connect(db_manager.DB_NAME)
-    # Fetch data and convert to a list of dictionaries for JSON transmission
-    drifts = pd.read_sql_query("SELECT * FROM drift_logs ORDER BY id DESC", conn).to_dict(orient="records")
+    
+    # Fetch data into a DataFrame
+    df = pd.read_sql_query("SELECT * FROM drift_logs ORDER BY id DESC", conn)
+    
+    # FIX: Replace NaN values (unsupported by JSON) with empty strings
+    df = df.fillna("")
+    
+    # Convert to a list of dictionaries for JSON transmission
+    drifts = df.to_dict(orient="records")
+    
     conn.close()
     return drifts

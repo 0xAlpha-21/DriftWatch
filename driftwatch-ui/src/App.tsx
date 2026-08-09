@@ -61,6 +61,17 @@ function App() {
     return "Network access rules modified outside of approved baseline. High probability of unauthorized lateral movement."
   }
 
+const formatTimestamp = (isoString: string) => {
+    const date = new Date(isoString);
+    return date.toLocaleString('en-IN', {
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true
+    });
+  }
+
   return (
     <div className="font-body-lg text-body-lg overflow-hidden h-screen w-screen flex antialiased bg-[#09090b]">
       
@@ -241,7 +252,7 @@ function App() {
                         onClick={() => setSelectedIncident(incident)}
                         className={`transition-colors cursor-pointer group ${selectedIncident?.id === incident.id ? 'bg-[#1c1c1f] border-l-2 border-l-primary-container' : 'hover:bg-[#1c1c1f] border-l-2 border-l-transparent'}`}
                       >
-                        <td className="py-3 px-3 text-outline whitespace-nowrap">{incident.timestamp.substring(0, 19)}Z</td>
+                        <td className="py-3 px-3 text-outline whitespace-nowrap">{formatTimestamp(incident.timestamp)}</td>
                         <td className={`py-3 px-3 truncate max-w-[150px] ${selectedIncident?.id === incident.id ? 'text-primary-container' : 'text-on-surface'}`}>{incident.resource_id}</td>
                         <td className="py-3 px-3 flex items-center gap-2 whitespace-nowrap">
                           <span className="w-2 h-2 bg-error rounded-none shrink-0"></span>
@@ -266,8 +277,9 @@ function App() {
                 <div className="p-4 border-b border-[#3f3f46] flex justify-between items-start pt-5">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 mb-1">
-                      <span className="bg-[rgba(244,63,94,0.1)] border border-error text-error px-2 py-0.5 font-label-caps text-[9px] uppercase tracking-wider shrink-0">Critical Drift</span>
-                    </div>
+  <span className="bg-[rgba(244,63,94,0.1)] border border-error text-error px-2 py-0.5 font-label-caps text-[9px] uppercase tracking-wider shrink-0">Critical Drift</span>
+  <span className="text-outline font-label-mono text-[10px]">{formatTimestamp(selectedIncident.timestamp)}</span>
+</div>
                     <h3 className="font-headline text-[14px] font-semibold text-on-surface truncate mt-2" title={selectedIncident.resource_id}>{selectedIncident.resource_id}</h3>
                     <p className="font-data-mono text-[10px] text-on-surface-variant mt-1 truncate">Event: {selectedIncident.event_type}</p>
                   </div>
