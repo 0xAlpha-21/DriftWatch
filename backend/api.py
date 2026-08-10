@@ -3,43 +3,77 @@ from fastapi.middleware.cors import CORSMiddleware
 import sqlite3
 import pandas as pd
 import db_manager
+import scanner  # Imports scanner module for on-demand execution
 
 app = FastAPI(title="DriftWatch API")
 
-# Allow your React app (running on localhost:5173) to talk to this API
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=["*"],
+    allow_credentials=True,
     allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 @app.get("/api/metrics")
 def get_metrics():
     conn = sqlite3.connect(db_manager.DB_NAME)
-    snaps = pd.read_sql_query("SELECT id FROM snapshots", conn)
-    drifts = pd.read_sql_query("SELECT * FROM drift_logs", conn)
+    try:
+        snaps = pd.read_sql_query("SELECT id FROM snapshots", conn)
+    except Exception:
+        snaps = pd.DataFrame()
+
+    try:
+        drifts = pd.read_sql_query("SELECT * FROM drift_logs", conn)
+    except Exception:
+        drifts = pd.DataFrame()
+
     conn.close()
     
-    # Calculate metrics to send to React
+    active_drifts_count = len(drifts)
+    critical_count = 0
+    privacy_count = 0
+
+    if not drifts.empty and 'cis_control' in drifts.columns:
+        critical_count = len(drifts[drifts['cis_control'].fillna('').str.contains('CIS 5.2|CIS 5.3|CIS 1.16', regex=True)])
+    if not drifts.empty and 'gdpr_control' in drifts.columns:
+        privacy_count = len(drifts[drifts['gdpr_control'].fillna('').str.contains('GDPR|DPDPA', regex=True)])
+
     return {
-        "monitored_assets": len(snaps),
-        "active_drifts": len(drifts),
-        "critical_risks": len(drifts[drifts['cis_control'].str.contains('CIS 5.2|CIS 5.1')]),
-        "privacy_violations": len(drifts[drifts['gdpr_control'].str.contains('GDPR')])
+        "monitored_assets": len(snaps) if not snaps.empty else 0,
+        "active_drifts": active_drifts_count,
+        "critical_risks": critical_count,
+        "privacy_violations": privacy_count
     }
 
 @app.get("/api/incidents")
 def get_incidents():
     conn = sqlite3.connect(db_manager.DB_NAME)
-    
-    # Fetch data into a DataFrame
-    df = pd.read_sql_query("SELECT * FROM drift_logs ORDER BY id DESC", conn)
-    
-    # FIX: Replace NaN values (unsupported by JSON) with empty strings
-    df = df.fillna("")
-    
-    # Convert to a list of dictionaries for JSON transmission
-    drifts = df.to_dict(orient="records")
-    
+    try:
+        df = pd.read_sql_query("SELECT * FROM drift_logs ORDER BY id DESC", conn)
+        df = df.fillna("")
+        drifts = df.to_dict(orient="records")
+    except Exception:
+        drifts = []
     conn.close()
     return drifts
+
+@app.post("/api/scan")
+def trigger_scan():
+    try:
+        scanner.scan_aws_environment()
+        return {"status": "success", "message": "AWS Scan completed successfully"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+@app.get("/api/frameworks")
+def get_frameworks():
+    conn = sqlite3.connect(db_manager.DB_NAME)
+    try:
+        df = pd.read_sql_query("SELECT * FROM compliance_controls", conn)
+        df = df.fillna("")
+        controls = df.to_dict(orient="records")
+    except Exception:
+        controls = []
+    conn.close()
+    return controls
