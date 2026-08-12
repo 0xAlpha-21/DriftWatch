@@ -24,7 +24,7 @@ def get_metrics():
         snaps = pd.DataFrame()
 
     try:
-        drifts = pd.read_sql_query("SELECT * FROM drift_logs", conn)
+        drifts = pd.read_sql_query("SELECT * FROM incidents", conn)
     except Exception:
         drifts = pd.DataFrame()
 
@@ -50,7 +50,7 @@ def get_metrics():
 def get_incidents():
     conn = sqlite3.connect(db_manager.DB_NAME)
     try:
-        df = pd.read_sql_query("SELECT * FROM drift_logs ORDER BY id DESC", conn)
+        df = pd.read_sql_query("SELECT * FROM incidents ORDER BY id DESC", conn)
         df = df.fillna("")
         drifts = df.to_dict(orient="records")
     except Exception:

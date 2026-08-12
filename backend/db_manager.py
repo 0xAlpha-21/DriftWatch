@@ -1,14 +1,17 @@
 import sqlite3
+import os
 
-DB_NAME = 'driftwatch.db'
+# Dynamically resolve absolute path to driftwatch.db in the same directory
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_NAME = os.path.join(BASE_DIR, 'driftwatch.db')
 
 def init_db():
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
 
-    # Table 1: Historical drift events (Added violation_trigger)
+    # Table 1: Historical drift events (Renamed to 'incidents' to match scanner.py)
     cursor.execute('''
-        CREATE TABLE IF NOT EXISTS drift_logs (
+        CREATE TABLE IF NOT EXISTS incidents (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             timestamp TEXT NOT NULL,
             resource_id TEXT NOT NULL,
@@ -22,7 +25,7 @@ def init_db():
         )
     ''')
 
-    # Table 2: Compliance Framework Dictionary (Added trigger_condition)
+    # Table 2: Compliance Framework Dictionary 
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS compliance_controls (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
