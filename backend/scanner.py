@@ -11,6 +11,34 @@ def get_db_connection():
     conn.row_factory = sqlite3.Row
     return conn
 
+def setup_database():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    # Ensure incidents table exists
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS incidents (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT,
+            resource_id TEXT,
+            event_type TEXT,
+            details TEXT,
+            violation_trigger TEXT,
+            cis_control TEXT,
+            iso_control TEXT,
+            gdpr_control TEXT,
+            dpdpa_control TEXT
+        )
+    ''')
+    # Ensure metrics table exists for the monitored assets counter
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS metrics (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            monitored_assets INTEGER
+        )
+    ''')
+    conn.commit()
+    conn.close()
+
 def record_incident(resource_id, event_type, details, trigger, cis="", iso="", gdpr="", dpdpa=""):
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -38,18 +66,36 @@ def record_incident(resource_id, event_type, details, trigger, cis="", iso="", g
     conn.commit()
     conn.close()
 
+def update_metrics(total_assets):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    # Update the total monitored assets
+    cursor.execute("DELETE FROM metrics")
+    cursor.execute("INSERT INTO metrics (monitored_assets) VALUES (?)", (total_assets,))
+    conn.commit()
+    conn.close()
+
 def scan_aws_environment():
     print("==========================================")
     print("   DRIFTWATCH ENGINE: ACTIVE AWS SCAN")
     print("==========================================")
+
+    setup_database()
+    total_scanned_assets = 0
 
     # 1. SCAN SECURITY GROUPS
     print("\n[*] Auditing Security Groups...")
     ec2 = boto3.client('ec2', region_name=REGION)
     try:
         sgs = ec2.describe_security_groups()['SecurityGroups']
+        total_scanned_assets += len(sgs) # Count total Security Groups evaluated
+        
         for sg in sgs:
-            sg_id = sg['GroupId']
+            # STANDARDIZED RESOURCE NAME
+            group_name = sg.get('GroupName', 'Unknown-Group')
+            group_id = sg.get('GroupId', '')
+            resource_id = f"{group_name} ({group_id})"
+
             for rule in sg.get('IpPermissions', []):
                 from_port = rule.get('FromPort')
                 to_port = rule.get('ToPort')
@@ -58,7 +104,7 @@ def scan_aws_environment():
                 if '0.0.0.0/0' in ip_ranges:
                     if from_port == 22 or to_port == 22:
                         record_incident(
-                            resource_id=sg_id,
+                            resource_id=resource_id,
                             event_type="RULES_MODIFIED",
                             details={"IpProtocol": "tcp", "FromPort": 22, "ToPort": 22, "CidrIp": "0.0.0.0/0"},
                             trigger="SSH Port 22 open publicly to 0.0.0.0/0",
@@ -66,7 +112,7 @@ def scan_aws_environment():
                         )
                     elif from_port == 3389 or to_port == 3389:
                         record_incident(
-                            resource_id=sg_id,
+                            resource_id=resource_id,
                             event_type="EXPOSED_RDP",
                             details={"IpProtocol": "tcp", "FromPort": 3389, "ToPort": 3389, "CidrIp": "0.0.0.0/0"},
                             trigger="RDP Port 3389 open publicly to 0.0.0.0/0",
@@ -80,20 +126,24 @@ def scan_aws_environment():
     s3 = boto3.client('s3', region_name=REGION)
     try:
         buckets = s3.list_buckets().get('Buckets', [])
+        total_scanned_assets += len(buckets) # Count total S3 Buckets evaluated
+        
         for b in buckets:
             b_name = b['Name']
+            # STANDARDIZED RESOURCE NAME
+            resource_id = f"[S3 Bucket] {b_name}"
+
             if "driftwatch-exposed-data" in b_name:
-                # Check Public Access Block
                 try:
                     pab = s3.get_public_access_block(Bucket=b_name)
                     config = pab['PublicAccessBlockConfiguration']
                     is_public = not (config.get('BlockPublicAcls') and config.get('RestrictPublicBuckets'))
                 except:
-                    is_public = True # If block doesn't exist, it's public
+                    is_public = True
 
                 if is_public:
                     record_incident(
-                        resource_id=b_name,
+                        resource_id=resource_id,
                         event_type="PUBLIC_BUCKET_EXPOSED",
                         details={"Bucket": b_name, "PublicAccessBlock": "DISABLED"},
                         trigger="S3 Bucket public access block is disabled",
@@ -107,10 +157,15 @@ def scan_aws_environment():
     iam = boto3.client('iam', region_name=REGION)
     try:
         policies = iam.list_policies(Scope='Local').get('Policies', [])
+        total_scanned_assets += len(policies) # Count total IAM Policies evaluated
+
         for p in policies:
+            # STANDARDIZED RESOURCE NAME
+            resource_id = f"{p['PolicyName']} ({p['PolicyId']})"
+
             if "sadcloud-overly-permissive" in p['PolicyName']:
                 record_incident(
-                    resource_id=p['PolicyName'],
+                    resource_id=resource_id,
                     event_type="FULL_ADMIN_PRIVILEGES",
                     details={"PolicyArn": p['Arn'], "Action": "*", "Resource": "*"},
                     trigger="IAM Policy allows full wildcard '*:*' permissions",
@@ -119,7 +174,11 @@ def scan_aws_environment():
     except Exception as e:
         print(f"  [!] IAM Scan Error: {e}")
 
-    print("\n[SUCCESS] AWS Posture Audit Complete.")
+    # Write the total count to the database
+    update_metrics(total_scanned_assets)
+
+    print(f"\n[+] Total assets successfully audited: {total_scanned_assets}")
+    print("[SUCCESS] AWS Posture Audit Complete.")
 
 if __name__ == "__main__":
     scan_aws_environment()

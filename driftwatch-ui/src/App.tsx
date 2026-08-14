@@ -29,6 +29,16 @@ interface Control {
   trigger_condition: string
 }
 
+// Define valid framework keys and configuration for dynamic rendering
+type FrameworkKey = 'CIS' | 'ISO 27001' | 'GDPR' | 'DPDPA'
+
+const frameworkConfig: Record<FrameworkKey, { label: string, db_key: keyof Incident }> = {
+  'CIS': { label: 'Benchmark Deviation', db_key: 'cis_control' },
+  'ISO 27001': { label: 'Non-Conformity', db_key: 'iso_control' },
+  'GDPR': { label: 'Privacy Violation', db_key: 'gdpr_control' },
+  'DPDPA': { label: 'Data Protection Breach', db_key: 'dpdpa_control' }
+}
+
 export default function App() {
   const [activeTab, setActiveTab] = useState<'overview' | 'incidents' | 'assets' | 'frameworks' | 'settings'>('incidents')
   const [incidents, setIncidents] = useState<Incident[]>([])
@@ -36,7 +46,9 @@ export default function App() {
   const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [isScanning, setIsScanning] = useState(false)
-  const [frameworkFilter, setFrameworkFilter] = useState<string>('All') // NEW: State for Framework Filter
+  const [frameworkFilter, setFrameworkFilter] = useState<string>('All') 
+  const [activeFramework, setActiveFramework] = useState<FrameworkKey>('CIS') // NEW: Global Framework Switcher State
+  
   const [metrics, setMetrics] = useState<Metric>({
     monitored_assets: 0,
     active_drifts: 0,
@@ -119,7 +131,6 @@ export default function App() {
     return "Network access rules modified outside of approved baseline. Potential data exposure."
   }
 
-  // Helper function to guess AWS service based on resource ID
   const getAssetClass = (resId: string) => {
     if (resId.startsWith('sg-') || resId.startsWith('i-')) return 'EC2 / Compute'
     if (resId.includes('policy') || resId.includes('user') || resId.includes('role')) return 'IAM / Identity'
@@ -202,7 +213,22 @@ export default function App() {
             <h2 className="font-headline text-[16px] font-bold text-white uppercase">{activeTab}</h2>
             <span className="text-[11px] text-[#71717a] font-mono">| CLOUD SECURITY POSTURE MANAGEMENT</span>
           </div>
-          <div className="flex items-center gap-3">
+          
+          {/* UPDATED: HEADER ACTIONS WITH FRAMEWORK SWITCHER */}
+          <div className="flex items-center gap-6">
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-mono text-[#a1a1aa] uppercase tracking-wider">Framework:</span>
+              <select
+                className="bg-[#131315] text-[#38bdf8] border border-[#27272a] px-2 py-1 text-[11px] font-mono rounded-sm focus:outline-none focus:border-[#38bdf8] cursor-pointer"
+                value={activeFramework}
+                onChange={(e) => setActiveFramework(e.target.value as FrameworkKey)}
+              >
+                {(Object.keys(frameworkConfig) as FrameworkKey[]).map(fw => (
+                  <option key={fw} value={fw}>{fw}</option>
+                ))}
+              </select>
+            </div>
+
             <span className="px-2.5 py-1 bg-[#131315] border border-[#27272a] text-[#38bdf8] text-[10px] font-mono flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-[#00f0ff] animate-pulse"></span>
               Monitoring: AWS us-east-1
@@ -335,6 +361,39 @@ export default function App() {
                   </div>
 
                   <div className="flex-1 overflow-y-auto p-4 space-y-4 text-[12px]">
+                    
+                    {/* NEW: COMPLIANCE CONTEXT BLOCK */}
+                    <div>
+                      <h4 className="font-mono text-[10px] text-[#a1a1aa] uppercase mb-2 border-b border-[#27272a] pb-1">
+                        Compliance Context ({activeFramework})
+                      </h4>
+                      <div className="bg-[#131315] p-3 border-l-2 border-[#38bdf8] rounded-r border-t border-r border-b border-[#27272a]">
+                        <span className="text-[#38bdf8] text-[11px] font-bold block mb-1">
+                          {frameworkConfig[activeFramework].label}
+                        </span>
+                        <span className="text-white font-mono text-[11px] block leading-relaxed">
+                          {selectedIncident[frameworkConfig[activeFramework].db_key] 
+                            ? selectedIncident[frameworkConfig[activeFramework].db_key] as string 
+                            : 'No specific control mapped for this framework.'}
+                        </span>
+                      </div>
+
+                      {/* The "Also Violates" Peek */}
+                      <div className="mt-2 text-[10px] font-mono flex flex-wrap gap-1.5">
+                        <span className="text-[#71717a] italic">Also violates:</span>
+                        {(Object.keys(frameworkConfig) as FrameworkKey[])
+                          .filter(fw => fw !== activeFramework && selectedIncident[frameworkConfig[fw].db_key])
+                          .map((fw, index, array) => (
+                            <span key={fw} className="text-[#a1a1aa]">
+                              {fw}{index < array.length - 1 ? ',' : ''}
+                            </span>
+                          ))}
+                        {(Object.keys(frameworkConfig) as FrameworkKey[]).filter(fw => fw !== activeFramework && selectedIncident[frameworkConfig[fw].db_key]).length === 0 && (
+                          <span className="text-[#71717a]">None</span>
+                        )}
+                      </div>
+                    </div>
+
                     <div>
                       <h4 className="font-mono text-[10px] text-[#a1a1aa] uppercase mb-1 border-b border-[#27272a] pb-1">Threat Context</h4>
                       <p className="text-white leading-relaxed">{getThreatContext(selectedIncident)}</p>
@@ -352,7 +411,7 @@ export default function App() {
             </div>
           )}
 
-          {/* TAB 3: ASSETS (UPDATED TO MEET REQUEST) */}
+          {/* TAB 3: ASSETS */}
           {activeTab === 'assets' && (
             <div className="w-full bg-[#131315] border border-[#27272a] flex flex-col overflow-hidden">
               <div className="p-5 border-b border-[#27272a]">
@@ -375,7 +434,6 @@ export default function App() {
                       </tr>
                     ) : (
                       <>
-                        {/* Map dynamic resources that have drifted */}
                         {Array.from(new Set(incidents.map(i => i.resource_id))).map(resId => (
                           <tr key={resId} className="hover:bg-[#1c1c1f] transition-colors">
                             <td className="p-4 font-mono text-[#a1a1aa]">{getAssetClass(resId)}</td>
@@ -388,7 +446,6 @@ export default function App() {
                           </tr>
                         ))}
                         
-                        {/* Mock healthy resources to complete the visual UI requirement */}
                         <tr className="hover:bg-[#1c1c1f] transition-colors">
                           <td className="p-4 font-mono text-[#a1a1aa]">S3 / Storage</td>
                           <td className="p-4 font-bold text-white">driftwatch-secure-audit-logs</td>
@@ -415,7 +472,7 @@ export default function App() {
             </div>
           )}
 
-          {/* TAB 4: FRAMEWORKS (UPDATED WITH DYNAMIC FILTERING) */}
+          {/* TAB 4: FRAMEWORKS */}
           {activeTab === 'frameworks' && (
             <div className="w-full bg-[#131315] border border-[#27272a] flex flex-col overflow-hidden">
               <div className="p-5 border-b border-[#27272a] flex justify-between items-center bg-[#09090b]">
@@ -424,7 +481,6 @@ export default function App() {
                   <p className="text-[12px] text-[#a1a1aa] mt-1">Rule definitions and technical triggers mapping.</p>
                 </div>
                 
-                {/* FILTER BUTTONS */}
                 <div className="flex gap-2 bg-[#131315] p-1 border border-[#27272a]">
                   {['All', 'DPDPA', 'GDPR', 'CIS', 'ISO'].map(filter => (
                     <button
