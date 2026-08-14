@@ -152,18 +152,34 @@ def scan_aws_environment():
     except Exception as e:
         print(f"  [!] S3 Scan Error: {e}")
 
-    # 3. SCAN IAM POLICIES
+    # 3. SCAN IAM POLICIES (Deep Policy Inspection)
     print("\n[*] Auditing IAM Policies...")
     iam = boto3.client('iam', region_name=REGION)
     try:
         policies = iam.list_policies(Scope='Local').get('Policies', [])
-        total_scanned_assets += len(policies) # Count total IAM Policies evaluated
+        total_scanned_assets += len(policies)
 
         for p in policies:
-            # STANDARDIZED RESOURCE NAME
             resource_id = f"{p['PolicyName']} ({p['PolicyId']})"
+            
+            # Fetch the active default version of the policy document
+            version_id = p.get('DefaultVersionId', 'v1')
+            policy_version = iam.get_policy_version(PolicyArn=p['Arn'], VersionId=version_id)
+            statements = policy_version['PolicyVersion']['Document'].get('Statement', [])
+            
+            if isinstance(statements, dict):
+                statements = [statements]
 
-            if "sadcloud-overly-permissive" in p['PolicyName']:
+            # Check if any statement allows full wildcard action '*'
+            is_admin_wildcard = False
+            for stmt in statements:
+                action = stmt.get('Action', [])
+                if action == "*" or action == ["*"] or "*" in action:
+                    is_admin_wildcard = True
+                    break
+
+            # Only record incident if wildcard is actually present
+            if is_admin_wildcard:
                 record_incident(
                     resource_id=resource_id,
                     event_type="FULL_ADMIN_PRIVILEGES",
@@ -173,7 +189,6 @@ def scan_aws_environment():
                 )
     except Exception as e:
         print(f"  [!] IAM Scan Error: {e}")
-
     # Write the total count to the database
     update_metrics(total_scanned_assets)
 

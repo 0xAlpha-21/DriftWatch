@@ -256,6 +256,23 @@ export default function App() {
           </div>
         </div>
 
+        <div className="p-6 pb-2 grid grid-cols-4 gap-4 shrink-0">
+          {/* ... your existing 4 metric cards ... */}
+        </div>
+
+        {/* NEW: COMPLIANCE NOTIFICATION BANNER */}
+        {metrics.monitored_assets > 0 && metrics.active_drifts === 0 && !isScanning && (
+          <div className="mx-6 mt-2 mb-2 p-3 bg-[rgba(16,185,129,0.1)] border border-[#10b981] flex items-center gap-3 shrink-0">
+            <span className="material-symbols-outlined text-[#10b981] text-[20px]">verified_user</span>
+            <div>
+              <h4 className="text-[#10b981] text-[12px] font-bold uppercase tracking-widest">Secure Baseline Verified</h4>
+              <p className="text-[#a1a1aa] text-[11px] mt-0.5">
+                The current scan evaluated {metrics.monitored_assets} assets. The environment is in a fully compliant state.
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* TAB CONTENT VIEWS */}
         <div className="flex-1 p-6 overflow-hidden flex">
           

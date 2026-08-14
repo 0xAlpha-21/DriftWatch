@@ -7,6 +7,10 @@
 # Repository: https://github.com/nccgroup/sadcloud
 # -------------------------------------------------------------------------
 
+# -------------------------------------------------------------------------
+# Dynamic AWS Infrastructure for DriftWatch Testing
+# -------------------------------------------------------------------------
+
 provider "aws" {
   region = "us-east-1"
 }
@@ -17,7 +21,7 @@ resource "aws_vpc" "sadcloud_vpc" {
   enable_dns_support   = true
   enable_dns_hostnames = true
   tags = {
-    Name = "DriftWatch-Sadcloud-VPC"
+    Name = "DriftWatch-VPC"
   }
 }
 
@@ -26,30 +30,32 @@ resource "aws_subnet" "sadcloud_subnet" {
   cidr_block              = "10.0.1.0/24"
   map_public_ip_on_launch = true
   tags = {
-    Name = "DriftWatch-Sadcloud-Subnet"
+    Name = "DriftWatch-Subnet"
   }
 }
 
-# 2. Vulnerable Security Group (Ports 22 & 3389 open to the Internet)
+# 2. Security Group (Dynamic Drift Simulation)
 resource "aws_security_group" "sadcloud_vulnerable_sg" {
   name        = "sadcloud-vulnerable-sg"
-  description = "Intentionally vulnerable SG with open SSH and RDP"
+  description = "Security Group simulating drift"
   vpc_id      = aws_vpc.sadcloud_vpc.id
 
+  # SSH Rule - Secure Baseline (Restricted to internal) vs Drift (0.0.0.0/0)
   ingress {
-    description = "SSH from anywhere"
+    description = "SSH Access"
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+    cidr_blocks = var.enable_vulnerabilities ? ["0.0.0.0/0"] : ["10.0.0.0/16"]
   }
 
+  # RDP Rule - Secure Baseline (Restricted to internal) vs Drift (0.0.0.0/0)
   ingress {
-    description = "RDP from anywhere"
+    description = "RDP Access"
     from_port   = 3389
     to_port     = 3389
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+    cidr_blocks = var.enable_vulnerabilities ? ["0.0.0.0/0"] : ["10.0.0.0/16"]
   }
 
   egress {
@@ -60,8 +66,7 @@ resource "aws_security_group" "sadcloud_vulnerable_sg" {
   }
 }
 
-# 3. Vulnerable EC2 Instance (Free Tier Eligible t3.micro)
-# Dynamically queries AWS EC2 for the latest Amazon Linux 2023 AMI
+# 3. EC2 Instance (Free Tier Eligible t3.micro)
 data "aws_ami" "amazon_linux" {
   most_recent = true
   owners      = ["amazon"]
@@ -79,11 +84,11 @@ resource "aws_instance" "sadcloud_ec2" {
   vpc_security_group_ids = [aws_security_group.sadcloud_vulnerable_sg.id]
 
   tags = {
-    Name = "DriftWatch-Vulnerable-EC2"
+    Name = "DriftWatch-EC2"
   }
 }
 
-# 4. Vulnerable S3 Bucket (No Encryption, Public Access Block Disabled)
+# 4. S3 Bucket (Dynamic Drift Simulation)
 resource "random_id" "bucket_id" {
   byte_length = 4
 }
@@ -92,28 +97,141 @@ resource "aws_s3_bucket" "sadcloud_vulnerable_bucket" {
   bucket = "driftwatch-exposed-data-${random_id.bucket_id.hex}"
 }
 
+# Public Access Block - Secure Baseline (Enabled) vs Drift (Disabled)
 resource "aws_s3_bucket_public_access_block" "public_access" {
   bucket = aws_s3_bucket.sadcloud_vulnerable_bucket.id
 
-  block_public_acls       = false
-  block_public_policy     = false
-  ignore_public_acls      = false
-  restrict_public_buckets = false
+  block_public_acls       = var.enable_vulnerabilities ? false : true
+  block_public_policy     = var.enable_vulnerabilities ? false : true
+  ignore_public_acls      = var.enable_vulnerabilities ? false : true
+  restrict_public_buckets = var.enable_vulnerabilities ? false : true
 }
 
-# 5. Vulnerable IAM Policy (Full Admin Access)
+# 5. IAM Policy (Dynamic Drift Simulation)
 resource "aws_iam_policy" "sadcloud_overly_permissive" {
   name        = "sadcloud-overly-permissive-policy"
-  description = "Intentionally vulnerable admin policy"
+  description = "IAM Policy simulating privilege escalation"
 
+  # Baseline (Read-Only) vs Drift (Full Admin)
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
       {
-        Action   = "*"
+        Action   = var.enable_vulnerabilities ? ["*"] : ["s3:GetObject", "s3:ListBucket"]
         Effect   = "Allow"
         Resource = "*"
-      },
+      }
     ]
   })
 }
+
+# provider "aws" {
+#   region = "us-east-1"
+# }
+
+# # 1. Custom VPC and Subnet (100% Free)
+# resource "aws_vpc" "sadcloud_vpc" {
+#   cidr_block           = "10.0.0.0/16"
+#   enable_dns_support   = true
+#   enable_dns_hostnames = true
+#   tags = {
+#     Name = "DriftWatch-Sadcloud-VPC"
+#   }
+# }
+
+# resource "aws_subnet" "sadcloud_subnet" {
+#   vpc_id                  = aws_vpc.sadcloud_vpc.id
+#   cidr_block              = "10.0.1.0/24"
+#   map_public_ip_on_launch = true
+#   tags = {
+#     Name = "DriftWatch-Sadcloud-Subnet"
+#   }
+# }
+
+# # 2. Vulnerable Security Group (Ports 22 & 3389 open to the Internet)
+# resource "aws_security_group" "sadcloud_vulnerable_sg" {
+#   name        = "sadcloud-vulnerable-sg"
+#   description = "Intentionally vulnerable SG with open SSH and RDP"
+#   vpc_id      = aws_vpc.sadcloud_vpc.id
+
+#   ingress {
+#     description = "SSH from anywhere"
+#     from_port   = 22
+#     to_port     = 22
+#     protocol    = "tcp"
+#     cidr_blocks = ["0.0.0.0/0"]
+#   }
+
+#   ingress {
+#     description = "RDP from anywhere"
+#     from_port   = 3389
+#     to_port     = 3389
+#     protocol    = "tcp"
+#     cidr_blocks = ["0.0.0.0/0"]
+#   }
+
+#   egress {
+#     from_port   = 0
+#     to_port     = 0
+#     protocol    = "-1"
+#     cidr_blocks = ["0.0.0.0/0"]
+#   }
+# }
+
+# # 3. Vulnerable EC2 Instance (Free Tier Eligible t3.micro)
+# # Dynamically queries AWS EC2 for the latest Amazon Linux 2023 AMI
+# data "aws_ami" "amazon_linux" {
+#   most_recent = true
+#   owners      = ["amazon"]
+
+#   filter {
+#     name   = "name"
+#     values = ["al2023-ami-2023.*-x86_64"]
+#   }
+# }
+
+# resource "aws_instance" "sadcloud_ec2" {
+#   ami                    = data.aws_ami.amazon_linux.id
+#   instance_type          = "t3.micro"
+#   subnet_id              = aws_subnet.sadcloud_subnet.id
+#   vpc_security_group_ids = [aws_security_group.sadcloud_vulnerable_sg.id]
+
+#   tags = {
+#     Name = "DriftWatch-Vulnerable-EC2"
+#   }
+# }
+
+# # 4. Vulnerable S3 Bucket (No Encryption, Public Access Block Disabled)
+# resource "random_id" "bucket_id" {
+#   byte_length = 4
+# }
+
+# resource "aws_s3_bucket" "sadcloud_vulnerable_bucket" {
+#   bucket = "driftwatch-exposed-data-${random_id.bucket_id.hex}"
+# }
+
+# resource "aws_s3_bucket_public_access_block" "public_access" {
+#   bucket = aws_s3_bucket.sadcloud_vulnerable_bucket.id
+
+#   block_public_acls       = false
+#   block_public_policy     = false
+#   ignore_public_acls      = false
+#   restrict_public_buckets = false
+# }
+
+# # 5. Vulnerable IAM Policy (Full Admin Access)
+# resource "aws_iam_policy" "sadcloud_overly_permissive" {
+#   name        = "sadcloud-overly-permissive-policy"
+#   description = "Intentionally vulnerable admin policy"
+
+#   policy = jsonencode({
+#     Version = "2012-10-17"
+#     Statement = [
+#       {
+#         Action   = "*"
+#         Effect   = "Allow"
+#         Resource = "*"
+#       },
+#     ]
+#   })
+# }
