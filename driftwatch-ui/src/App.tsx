@@ -18,6 +18,7 @@ interface Metric {
   active_drifts: number
   critical_risks: number
   privacy_violations: number
+  snapshot_count?: number
 }
 
 interface Control {
@@ -28,6 +29,10 @@ interface Control {
   risk_level: string
   trigger_condition: string
 }
+
+const handleDownloadReport = (reportType: 'auditor' | 'executive') => {
+  window.open(`http://localhost:8000/api/reports/download?report_type=${reportType}`, '_blank');
+};
 
 // Define valid framework keys and configuration for dynamic rendering
 type FrameworkKey = 'CIS' | 'ISO 27001' | 'GDPR' | 'DPDPA'
@@ -48,6 +53,7 @@ export default function App() {
   const [isScanning, setIsScanning] = useState(false)
   const [frameworkFilter, setFrameworkFilter] = useState<string>('All') 
   const [activeFramework, setActiveFramework] = useState<FrameworkKey>('CIS') // NEW: Global Framework Switcher State
+//  const [selectedFramework, setSelectedFramework] = useState<string>('CIS');
   
   const [metrics, setMetrics] = useState<Metric>({
     monitored_assets: 0,
@@ -153,8 +159,29 @@ export default function App() {
           <span className="font-label-mono text-[10px] text-[#a1a1aa] uppercase">Cloud Security</span>
         </div>
 
-        {/* QUICK SCAN BUTTON */}
+        {/* QUICK / INITIAL SCAN BUTTON */}
         <div className="p-4">
+          <button
+            onClick={handleQuickScan}
+            disabled={isScanning}
+            className={`w-full py-2.5 px-3 font-label-caps text-[11px] uppercase tracking-wider flex items-center justify-center gap-2 transition-all font-bold ${
+              isScanning
+                ? 'bg-[#27272a] text-[#a1a1aa] cursor-not-allowed'
+                : 'bg-[#00f0ff] text-[#000000] hover:bg-[#38bdf8] shadow-[0_0_15px_rgba(0,240,255,0.3)]'
+            }`}
+          >
+            <span className={`material-symbols-outlined text-[16px] ${isScanning ? 'animate-spin' : ''}`}>
+              {isScanning ? 'sync' : 'radar'}
+            </span>
+            {isScanning 
+              ? 'Scanning AWS...' 
+              : ((metrics.snapshot_count ?? 0) === 0 ? 'Initial Scan' : 'Quick Scan')
+            }
+          </button>
+        </div>
+
+        {/* QUICK SCAN BUTTON */}
+        {/* <div className="p-4">
           <button
             onClick={handleQuickScan}
             disabled={isScanning}
@@ -169,7 +196,7 @@ export default function App() {
             </span>
             {isScanning ? 'Scanning AWS...' : 'Quick Scan'}
           </button>
-        </div>
+        </div> */}
 
         {/* MENU ITEMS */}
         <div className="flex-1 px-3 py-2 space-y-1">
@@ -229,6 +256,39 @@ export default function App() {
               </select>
             </div>
 
+            {/* Top Bar Right Section */}
+<div className="flex items-center gap-3">
+  {/* Auditor Report Button */}
+  <button
+    onClick={() => handleDownloadReport('auditor')}
+    className="flex items-center gap-1.5 px-3 py-1.5 bg-[#18181b] border border-[#27272a] hover:border-[#38bdf8] text-[#a1a1aa] hover:text-[#38bdf8] text-[11px] font-semibold tracking-wider uppercase transition-colors"
+  >
+    <span className="material-symbols-outlined text-[16px]">description</span>
+    Auditor Report
+  </button>
+
+  {/* Executive Summary Button */}
+  <button
+    onClick={() => handleDownloadReport('executive')}
+    className="flex items-center gap-1.5 px-3 py-1.5 bg-[#18181b] border border-[#27272a] hover:border-[#10b981] text-[#a1a1aa] hover:text-[#10b981] text-[11px] font-semibold tracking-wider uppercase transition-colors"
+  >
+    <span className="material-symbols-outlined text-[16px]">assessment</span>
+    Executive Summary
+  </button>
+
+  {/* Framework Selector */}
+  {/* <select
+    value={selectedFramework}
+    onChange={(e) => setSelectedFramework(e.target.value)}
+    className="bg-[#18181b] border border-[#27272a] text-[#f4f4f5] text-[11px] px-3 py-1.5 tracking-wider uppercase focus:outline-none focus:border-[#38bdf8]"
+  >
+    <option value="CIS">CIS</option>
+    <option value="ISO 27001">ISO 27001</option>
+    <option value="GDPR">GDPR</option>
+    <option value="DPDPA">DPDPA</option>
+  </select> */}
+</div>
+
             <span className="px-2.5 py-1 bg-[#131315] border border-[#27272a] text-[#38bdf8] text-[10px] font-mono flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-[#00f0ff] animate-pulse"></span>
               Monitoring: AWS us-east-1
@@ -260,7 +320,21 @@ export default function App() {
           {/* ... your existing 4 metric cards ... */}
         </div>
 
-        {/* NEW: COMPLIANCE NOTIFICATION BANNER */}
+
+        {/* ONBOARDING BANNER (Shows only when exactly 1 snapshot exists) */}
+        {metrics.snapshot_count === 1 && !isScanning && (
+          <div className="mx-6 mt-2 mb-2 p-3 bg-[rgba(56,189,248,0.1)] border border-[#38bdf8] flex items-center gap-3 shrink-0">
+            <span className="material-symbols-outlined text-[#38bdf8] text-[20px]">info</span>
+            <div>
+              <h4 className="text-[#38bdf8] text-[12px] font-bold uppercase tracking-widest">Baseline Established</h4>
+              <p className="text-[#a1a1aa] text-[11px] mt-0.5">
+                Current snapshot saved. Run "Quick Scan" to check for configuration drifts and environmental mutations.
+              </p>
+            </div>
+          </div>
+        )}
+        
+        {/* COMPLIANCE NOTIFICATION BANNER */}
         {metrics.monitored_assets > 0 && metrics.active_drifts === 0 && !isScanning && (
           <div className="mx-6 mt-2 mb-2 p-3 bg-[rgba(16,185,129,0.1)] border border-[#10b981] flex items-center gap-3 shrink-0">
             <span className="material-symbols-outlined text-[#10b981] text-[20px]">verified_user</span>
@@ -272,6 +346,32 @@ export default function App() {
             </div>
           </div>
         )}
+
+        {/* NEW: TEMPORAL ENGINE STATUS BANNER (Only shows if < 2 snapshots) */}
+        {/* {(metrics.snapshot_count ?? 0) > 0 && (metrics.snapshot_count ?? 0) < 2 && !isScanning && (
+          <div className="mx-6 mt-2 mb-2 p-3 bg-[rgba(56,189,248,0.1)] border border-[#38bdf8] flex items-center gap-3 shrink-0">
+            <span className="material-symbols-outlined text-[#38bdf8] text-[20px]">info</span>
+            <div>
+              <h4 className="text-[#38bdf8] text-[12px] font-bold uppercase tracking-widest">Baseline Established</h4>
+              <p className="text-[#a1a1aa] text-[11px] mt-0.5">
+                Snapshot 1 recorded. The temporal drift engine requires a second scan (T₁) to compare configuration mutations.
+              </p>
+            </div>
+          </div>
+        )} */}
+        
+        {/* NEW: COMPLIANCE NOTIFICATION BANNER */}
+        {/* {metrics.monitored_assets > 0 && metrics.active_drifts === 0 && !isScanning && (
+          <div className="mx-6 mt-2 mb-2 p-3 bg-[rgba(16,185,129,0.1)] border border-[#10b981] flex items-center gap-3 shrink-0">
+            <span className="material-symbols-outlined text-[#10b981] text-[20px]">verified_user</span>
+            <div>
+              <h4 className="text-[#10b981] text-[12px] font-bold uppercase tracking-widest">Secure Baseline Verified</h4>
+              <p className="text-[#a1a1aa] text-[11px] mt-0.5">
+                The current scan evaluated {metrics.monitored_assets} assets. The environment is in a fully compliant state.
+              </p>
+            </div>
+          </div>
+        )} */}
 
         {/* TAB CONTENT VIEWS */}
         <div className="flex-1 p-6 overflow-hidden flex">
