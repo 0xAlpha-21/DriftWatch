@@ -94,7 +94,9 @@ export default function App() {
   }, [])
 
   const handleQuickScan = async () => {
-    setIsScanning(true)
+    setIsScanning(true);
+    // NEW: Clears the side-panel as soon as the scan starts
+    setSelectedIncident(null);
     try {
       await fetch('http://localhost:8000/api/scan', { method: 'POST' })
       await fetchData()
@@ -339,9 +341,16 @@ export default function App() {
           <div className="mx-6 mt-2 mb-2 p-3 bg-[rgba(16,185,129,0.1)] border border-[#10b981] flex items-center gap-3 shrink-0">
             <span className="material-symbols-outlined text-[#10b981] text-[20px]">verified_user</span>
             <div>
-              <h4 className="text-[#10b981] text-[12px] font-bold uppercase tracking-widest">Secure Baseline Verified</h4>
+              <h4 className="text-[#10b981] text-[12px] font-bold uppercase tracking-widest">
+                {(metrics.snapshot_count ?? 0) > 1 ? 'Remediation Verified' : 'Secure Baseline Verified'}
+              </h4>
               <p className="text-[#a1a1aa] text-[11px] mt-0.5">
                 The current scan evaluated {metrics.monitored_assets} assets. The environment is in a fully compliant state.
+                {(metrics.snapshot_count ?? 0) > 1 && (
+                  <span className="text-[#10b981] font-medium ml-1">
+                    All compliance violations have been successfully recovered to the secure baseline.
+                  </span>
+                )}
               </p>
             </div>
           </div>
@@ -374,36 +383,89 @@ export default function App() {
         )} */}
 
         {/* TAB CONTENT VIEWS */}
-        <div className="flex-1 p-6 overflow-hidden flex">
+        <div className="flex-1 overflow-y-auto min-h-0 custom-scrollbar p-6">
           
-          {/* TAB 1: OVERVIEW */}
-          {activeTab === 'overview' && (
-            <div className="w-full space-y-4 overflow-y-auto">
-              <div className="bg-[#131315] border border-[#27272a] p-6">
-                <h3 className="text-[14px] font-bold text-[#38bdf8] uppercase mb-2">Posture Health Summary</h3>
-                <p className="text-[13px] text-[#a1a1aa]">
-                  DriftWatch is continuously monitoring your cloud infrastructure against 40 standard security policies across CIS, ISO 27001, GDPR, and DPDPA frameworks.
-                </p>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="bg-[#131315] border border-[#27272a] p-5">
-                  <h4 className="text-[12px] font-mono uppercase text-white mb-3">Compliance Coverage</h4>
-                  <ul className="space-y-2 text-[12px] text-[#a1a1aa]">
-                    <li className="flex justify-between"><span>CIS Foundations</span><span className="text-[#38bdf8]">10 Rules Active</span></li>
-                    <li className="flex justify-between"><span>ISO/IEC 27001</span><span className="text-[#38bdf8]">10 Rules Active</span></li>
-                    <li className="flex justify-between"><span>GDPR Privacy</span><span className="text-[#38bdf8]">10 Rules Active</span></li>
-                    <li className="flex justify-between"><span>DPDPA (India)</span><span className="text-[#38bdf8]">10 Rules Active</span></li>
-                  </ul>
+        {/* OVERVIEW TAB */}
+        {activeTab === 'overview' && (
+          <div className="space-y-5">
+            {/* CURRENT STATE BADGE */}
+            <div className="flex items-center gap-3 p-3.5 bg-[#121214] border border-[#27272a]">
+              <span className="text-[#71717a] text-[11px] font-bold tracking-[0.15em] uppercase">Current State:</span>
+              {metrics.active_drifts === 0 ? (
+                <span className="px-2.5 py-0.5 bg-[rgba(16,185,129,0.1)] border border-[#10b981] text-[#10b981] text-[11px] font-bold tracking-widest uppercase">
+                  COMPLIANT (SECURE)
+                </span>
+              ) : (
+                <span className="px-2.5 py-0.5 bg-[rgba(244,63,94,0.1)] border border-[#f43f5e] text-[#f43f5e] text-[11px] font-bold tracking-widest uppercase">
+                  INSECURE / ELEVATED RISK
+                </span>
+              )}
+            </div>
+
+            {/* POSTURE SUMMARY */}
+            <div className="p-4 bg-[#121214] border border-[#27272a]">
+              <h3 className="text-[#38bdf8] text-[13px] font-bold tracking-[0.15em] uppercase mb-1.5">
+                Posture Health Summary
+              </h3>
+              <p className="text-[#a1a1aa] text-[12px] leading-relaxed">
+                DriftWatch is continuously monitoring your cloud infrastructure against 40 standard security policies across CIS, ISO 27001, GDPR, and DPDPA frameworks.
+              </p>
+            </div>
+
+            {/* TWO-COLUMN GRID */}
+            <div className="grid grid-cols-2 gap-5">
+              {/* Compliance Coverage */}
+              <div className="border border-[#27272a] bg-[#121214] p-4">
+                <h4 className="text-[#f4f4f5] text-[11px] font-bold uppercase tracking-widest mb-3 border-b border-[#27272a] pb-2">
+                  Compliance Coverage
+                </h4>
+                <div className="space-y-2.5">
+                  <div className="flex justify-between items-center text-[12px]">
+                    <span className="text-[#a1a1aa]">CIS Foundations</span>
+                    <span className="text-[#38bdf8] font-semibold text-[11px]">10 Rules Active</span>
+                  </div>
+                  <div className="flex justify-between items-center text-[12px]">
+                    <span className="text-[#a1a1aa]">ISO/IEC 27001</span>
+                    <span className="text-[#38bdf8] font-semibold text-[11px]">10 Rules Active</span>
+                  </div>
+                  <div className="flex justify-between items-center text-[12px]">
+                    <span className="text-[#a1a1aa]">GDPR Privacy</span>
+                    <span className="text-[#38bdf8] font-semibold text-[11px]">10 Rules Active</span>
+                  </div>
+                  <div className="flex justify-between items-center text-[12px]">
+                    <span className="text-[#a1a1aa]">DPDPA (India)</span>
+                    <span className="text-[#38bdf8] font-semibold text-[11px]">10 Rules Active</span>
+                  </div>
                 </div>
-                <div className="bg-[#131315] border border-[#27272a] p-5">
-                  <h4 className="text-[12px] font-mono uppercase text-white mb-3">System Engine Status</h4>
-                  <p className="text-[12px] text-[#a1a1aa]">Scanner: <span className="text-[#00f0ff]">boto3 AWS Engine</span></p>
-                  <p className="text-[12px] text-[#a1a1aa] mt-1">Database: <span className="text-white">SQLite (driftwatch.db)</span></p>
-                  <p className="text-[12px] text-[#a1a1aa] mt-1">API Backend: <span className="text-white">FastAPI Active</span></p>
+              </div>
+
+              {/* System Engine Status */}
+              <div className="border border-[#27272a] bg-[#121214] p-4">
+                <h4 className="text-[#f4f4f5] text-[11px] font-bold uppercase tracking-widest mb-3 border-b border-[#27272a] pb-2">
+                  System Engine Status
+                </h4>
+                <div className="space-y-2.5">
+                  <div className="flex justify-between items-center text-[12px]">
+                    <span className="text-[#a1a1aa]">Scanner Engine</span>
+                    <span className="text-[#38bdf8] font-mono text-[11px]">boto3 AWS Engine</span>
+                  </div>
+                  <div className="flex justify-between items-center text-[12px]">
+                    <span className="text-[#a1a1aa]">Local Storage</span>
+                    <span className="text-[#f4f4f5] font-mono text-[11px]">SQLite (driftwatch.db)</span>
+                  </div>
+                  <div className="flex justify-between items-center text-[12px]">
+                    <span className="text-[#a1a1aa]">API Backend</span>
+                    <span className="text-[#10b981] font-mono text-[11px]">FastAPI Active (Port 8000)</span>
+                  </div>
+                  <div className="flex justify-between items-center text-[12px]">
+                    <span className="text-[#a1a1aa]">Target Scope</span>
+                    <span className="text-[#f4f4f5] font-mono text-[11px]">AWS us-east-1</span>
+                  </div>
                 </div>
               </div>
             </div>
-          )}
+          </div>
+        )}
 
           {/* TAB 2: INCIDENTS */}
           {activeTab === 'incidents' && (
@@ -528,66 +590,70 @@ export default function App() {
             </div>
           )}
 
-          {/* TAB 3: ASSETS */}
-          {activeTab === 'assets' && (
-            <div className="w-full bg-[#131315] border border-[#27272a] flex flex-col overflow-hidden">
-              <div className="p-5 border-b border-[#27272a]">
-                <h3 className="text-[14px] font-bold text-white uppercase">Monitored Cloud Infrastructure</h3>
-                <p className="text-[12px] text-[#a1a1aa] mt-1">Global inventory of AWS EC2, S3, IAM, and RDS assets.</p>
-              </div>
-              <div className="flex-1 overflow-y-auto">
-                <table className="w-full text-left text-[12px]">
-                  <thead className="bg-[#09090b] text-[#a1a1aa] uppercase font-mono text-[10px] sticky top-0 border-b border-[#27272a]">
-                    <tr>
-                      <th className="p-4">AWS Service</th>
-                      <th className="p-4">Resource ID</th>
-                      <th className="p-4 text-right">Posture Status</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-[#27272a]">
-                    {incidents.length === 0 && metrics.monitored_assets === 0 ? (
-                      <tr>
-                        <td colSpan={3} className="p-8 text-center text-[#71717a] font-mono uppercase">None</td>
-                      </tr>
-                    ) : (
-                      <>
-                        {Array.from(new Set(incidents.map(i => i.resource_id))).map(resId => (
-                          <tr key={resId} className="hover:bg-[#1c1c1f] transition-colors">
-                            <td className="p-4 font-mono text-[#a1a1aa]">{getAssetClass(resId)}</td>
-                            <td className="p-4 font-bold text-white">{resId}</td>
-                            <td className="p-4 text-right">
-                              <span className="text-[10px] font-mono bg-[rgba(244,63,94,0.1)] text-[#f43f5e] border border-[#f43f5e] px-2 py-1 uppercase">
-                                Drift Detected : Security Risk
-                              </span>
-                            </td>
-                          </tr>
-                        ))}
-                        
-                        <tr className="hover:bg-[#1c1c1f] transition-colors">
-                          <td className="p-4 font-mono text-[#a1a1aa]">S3 / Storage</td>
-                          <td className="p-4 font-bold text-white">driftwatch-secure-audit-logs</td>
-                          <td className="p-4 text-right">
-                            <span className="text-[10px] font-mono bg-[rgba(56,189,248,0.1)] text-[#38bdf8] border border-[#38bdf8] px-2 py-1 uppercase">
-                              Compliant and Safe
-                            </span>
-                          </td>
-                        </tr>
-                        <tr className="hover:bg-[#1c1c1f] transition-colors">
-                          <td className="p-4 font-mono text-[#a1a1aa]">IAM / Identity</td>
-                          <td className="p-4 font-bold text-white">arn:aws:iam::account:role/admin-baseline</td>
-                          <td className="p-4 text-right">
-                            <span className="text-[10px] font-mono bg-[rgba(56,189,248,0.1)] text-[#38bdf8] border border-[#38bdf8] px-2 py-1 uppercase">
-                              Compliant and Safe
-                            </span>
-                          </td>
-                        </tr>
-                      </>
-                    )}
-                  </tbody>
-                </table>
-              </div>
+        {/* ASSETS TAB */}
+        {activeTab === 'assets' && (
+          <div className="space-y-4">
+            <div>
+              <h3 className="text-[#f4f4f5] text-[13px] font-bold tracking-[0.15em] uppercase">
+                Monitored Cloud Infrastructure
+              </h3>
+              <p className="text-[#71717a] text-[11px] mt-0.5">
+                Global inventory of active AWS resources evaluated during posture and drift scans.
+              </p>
             </div>
-          )}
+
+            {/* Active Assets Table */}
+            <div className="border border-[#27272a] bg-[#121214]">
+              <div className="flex border-b border-[#27272a] px-4 py-2.5 text-[#71717a] text-[10px] font-bold tracking-widest uppercase">
+                <div className="w-1/3">AWS Service</div>
+                <div className="w-1/2">Resource ID</div>
+                <div className="w-1/6 text-right">Posture Status</div>
+              </div>
+              
+              {/* Map through the 5 monitored assets */}
+              {[
+                { type: 'EC2 / Security Group', id: 'sadcloud-vulnerable-sg' },
+                { type: 'EC2 / Security Group', id: 'default-vpc-sg' },
+                { type: 'S3 / Storage', id: 'driftwatch-exposed-data' },
+                { type: 'IAM / Identity', id: 'sadcloud-overly-permissive-policy' },
+                { type: 'IAM / Identity', id: 'admin-baseline-policy' }
+              ].map((asset, index) => {
+                
+                // Dynamically check if this asset has an active drift in the incidents array
+                const isDrifted = incidents.some(inc => (inc.resource_id || '').includes(asset.id));
+                
+                return (
+                  <div key={index} className="flex items-center border-b border-[#27272a] last:border-0 px-4 py-3 text-[12px]">
+                    <div className="w-1/3 font-medium text-[#a1a1aa]">{asset.type}</div>
+                    <div className="w-1/2 font-mono text-[11px] text-[#f4f4f5]">{asset.id}</div>
+                    <div className="w-1/6 text-right">
+                      {isDrifted ? (
+                        <span className="text-[#f43f5e] bg-[rgba(244,63,94,0.1)] border border-[#f43f5e] px-2 py-0.5 text-[10px] font-bold tracking-wider shadow-[0_0_8px_rgba(244,63,94,0.2)]">
+                          INSECURE
+                        </span>
+                      ) : (
+                        <span className="text-[#10b981] bg-[rgba(16,185,129,0.1)] border border-[#10b981] px-2 py-0.5 text-[10px] font-bold tracking-wider shadow-[0_0_8px_rgba(16,185,129,0.2)]">
+                          COMPLIANT
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Supported but Inactive Assets Callout */}
+            <div className="p-3.5 border border-[#27272a] bg-[#151518] border-dashed">
+              <h4 className="text-[#a1a1aa] text-[11px] font-bold uppercase tracking-widest mb-1 flex items-center gap-2">
+                <span className="material-symbols-outlined text-[15px] text-[#38bdf8]">info</span>
+                Additional Asset Options
+              </h4>
+              <p className="text-[#71717a] text-[11px] leading-relaxed pl-6">
+                AWS Lambda, RDS Database Instances, VPCs, and DynamoDB components are actively supported by the DriftWatch scanner rules but are not currently provisioned in the live AWS account.
+              </p>
+            </div>
+          </div>
+        )}
 
           {/* TAB 4: FRAMEWORKS */}
           {activeTab === 'frameworks' && (

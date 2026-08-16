@@ -104,9 +104,16 @@ def trigger_scan():
 def get_frameworks():
     conn = sqlite3.connect(db_manager.DB_NAME)
     try:
-        df = pd.read_sql_query("SELECT * FROM compliance_controls", conn)
+        df = pd.read_sql_query("SELECT * FROM frameworks", conn)
         df = df.fillna("")
         controls = df.to_dict(orient="records")
+
+        # Map the new database columns to the old React UI expected keys
+        for c in controls:
+            c['trigger_condition'] = c.get('trigger', '')
+            c['technical_trigger_condition'] = c.get('trigger', '')
+            c['risk_level'] = c.get('severity', '')
+            
     except Exception:
         controls = []
     conn.close()

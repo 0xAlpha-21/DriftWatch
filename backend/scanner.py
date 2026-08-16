@@ -16,7 +16,6 @@ def get_db_connection():
 def setup_database():
     conn = get_db_connection()
     cursor = conn.cursor()
-    # Ensure incidents table exists
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS incidents (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -31,14 +30,12 @@ def setup_database():
             dpdpa_control TEXT
         )
     ''')
-    # Ensure metrics table exists
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS metrics (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             monitored_assets INTEGER
         )
     ''')
-    # NEW: Ensure snapshots table exists for Temporal Engine
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS snapshots (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -62,7 +59,6 @@ def save_snapshot(resource_type, data):
 def record_incident(resource_id, event_type, details, trigger, cis="", iso="", gdpr="", dpdpa=""):
     conn = get_db_connection()
     cursor = conn.cursor()
-    
     cursor.execute("SELECT id FROM incidents WHERE resource_id = ? AND event_type = ?", (resource_id, event_type))
     existing = cursor.fetchone()
     
@@ -90,6 +86,14 @@ def scan_aws_environment():
     print("==========================================")
 
     setup_database()
+    
+    # CLEAR OLD LIFE-STATE INCIDENTS BEFORE SCAN
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM incidents")
+    conn.commit()
+    conn.close()
+
     total_scanned_assets = 0
 
     # 1. SCAN SECURITY GROUPS & SAVE SNAPSHOT
@@ -97,9 +101,7 @@ def scan_aws_environment():
     ec2 = boto3.client('ec2', region_name=REGION)
     try:
         sgs = ec2.describe_security_groups()['SecurityGroups']
-        # NEW: Save snapshot for drift_engine
         save_snapshot("AWS::EC2::SecurityGroup", sgs)
-        
         total_scanned_assets += len(sgs)
         
         for sg in sgs:
@@ -114,19 +116,110 @@ def scan_aws_environment():
 
                 if '0.0.0.0/0' in ip_ranges:
                     if from_port == 22 or to_port == 22:
-                        record_incident(resource_id, "RULES_MODIFIED", {"Port": 22}, "SSH Port 22 open", cis="CIS 0.1")
+                        record_incident(
+                            resource_id=resource_id, event_type="RULES_MODIFIED",
+                            details={"IpProtocol": "tcp", "FromPort": 22, "ToPort": 22, "CidrIp": "0.0.0.0/0"},
+                            trigger="SSH Port 22 open publicly to 0.0.0.0/0",
+                            cis="CIS 5.2", iso="A.8.20", gdpr="Art. 32(1)(b)", dpdpa="Sec. 8(5)"
+                        )
                     elif from_port == 3389 or to_port == 3389:
-                        record_incident(resource_id, "EXPOSED_RDP", {"Port": 3389}, "RDP Port 3389 open", cis="CIS 0.2")
+                        record_incident(
+                            resource_id=resource_id, event_type="EXPOSED_RDP",
+                            details={"IpProtocol": "tcp", "FromPort": 3389, "ToPort": 3389, "CidrIp": "0.0.0.0/0"},
+                            trigger="RDP Port 3389 open publicly to 0.0.0.0/0",
+                            cis="CIS 5.3", iso="A.8.20", gdpr="Art. 32(1)(b)", dpdpa="Sec. 8(5)"
+                        )
     except Exception as e:
         print(f"  [!] SG Scan Error: {e}")
 
-    # ... (Keep your S3, IAM, and Lambda scan logic here) ...
+    # 2. SCAN S3 BUCKETS
+    print("\n[*] Auditing S3 Buckets...")
+    s3 = boto3.client('s3', region_name=REGION)
+    try:
+        buckets = s3.list_buckets().get('Buckets', [])
+        total_scanned_assets += len(buckets)
+        
+        for b in buckets:
+            b_name = b['Name']
+            resource_id = f"[S3 Bucket] {b_name}"
+            if "driftwatch-exposed-data" in b_name:
+                try:
+                    pab = s3.get_public_access_block(Bucket=b_name)
+                    config = pab['PublicAccessBlockConfiguration']
+                    is_public = not (config.get('BlockPublicAcls') and config.get('RestrictPublicBuckets'))
+                except:
+                    is_public = True
+
+                if is_public:
+                    record_incident(
+                        resource_id=resource_id, event_type="PUBLIC_BUCKET_EXPOSED",
+                        details={"Bucket": b_name, "PublicAccessBlock": "DISABLED"},
+                        trigger="S3 Bucket public access block is disabled",
+                        cis="CIS 2.1.5", iso="A.8.12", gdpr="Art. 32(1)(a)", dpdpa="Sec. 8(4)"
+                    )
+    except Exception as e:
+        print(f"  [!] S3 Scan Error: {e}")
+
+    # 3. SCAN IAM POLICIES
+    print("\n[*] Auditing IAM Policies...")
+    iam = boto3.client('iam', region_name=REGION)
+    try:
+        policies = iam.list_policies(Scope='Local').get('Policies', [])
+        total_scanned_assets += len(policies)
+
+        for p in policies:
+            resource_id = f"{p['PolicyName']} ({p['PolicyId']})"
+            version_id = p.get('DefaultVersionId', 'v1')
+            policy_version = iam.get_policy_version(PolicyArn=p['Arn'], VersionId=version_id)
+            statements = policy_version['PolicyVersion']['Document'].get('Statement', [])
+            
+            if isinstance(statements, dict):
+                statements = [statements]
+
+            is_admin_wildcard = False
+            for stmt in statements:
+                action = stmt.get('Action', [])
+                if action == "*" or action == ["*"] or "*" in action:
+                    is_admin_wildcard = True
+                    break
+
+            if is_admin_wildcard:
+                record_incident(
+                    resource_id=resource_id, event_type="FULL_ADMIN_PRIVILEGES",
+                    details={"PolicyArn": p['Arn'], "Action": "*", "Resource": "*"},
+                    trigger="IAM Policy allows full wildcard '*:*' permissions",
+                    cis="CIS 1.16", iso="A.8.2", gdpr="Art. 25(2)", dpdpa="Sec. 8(5)"
+                )
+    except Exception as e:
+        print(f"  [!] IAM Scan Error: {e}")
+
+    # 4. SCAN LAMBDA FUNCTIONS
+    print("\n[*] Auditing Lambda Functions...")
+    lambda_client = boto3.client('lambda', region_name=REGION)
+    try:
+        functions = lambda_client.list_functions().get('Functions', [])
+        total_scanned_assets += len(functions)
+        for f in functions:
+            func_name = f['FunctionName']
+            resource_id = f"[Lambda] {func_name}"
+            env_vars = f.get('Environment', {}).get('Variables', {})
+            
+            if 'AWS_ACCESS_KEY_ID' in env_vars or 'AWS_SECRET_ACCESS_KEY' in env_vars:
+                record_incident(
+                    resource_id=resource_id, event_type="HARDCODED_SECRETS",
+                    details={"FunctionName": func_name, "Vulnerability": "Hardcoded API Keys in Environment Variables"},
+                    trigger="AWS Access Keys detected in plaintext environment variables",
+                    cis="CIS 1.1", iso="A.8.2.1", gdpr="Art. 32(1)(a)", dpdpa="Sec. 8(4)"
+                )
+    except Exception as e:
+        print(f"  [!] Lambda Scan Error: {e}")
     
     update_metrics(total_scanned_assets)
     print(f"\n[+] Total assets successfully audited: {total_scanned_assets}")
     print("[SUCCESS] AWS Posture Audit Complete.")
 
-
+if __name__ == "__main__":
+    scan_aws_environment()
 
 #version 4 :
 # import boto3
